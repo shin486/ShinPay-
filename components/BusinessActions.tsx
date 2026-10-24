@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect, useTransition } from 'react';
+import { useState, useRef, useEffect, useTransition, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -22,28 +23,84 @@ import {
 export function BusinessActions({ id, status }: { id: number; status: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const updateCoords = useCallback(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 176; // 11rem / 176px
+    const menuHeight = 175;
+
+    // Check if there's enough space below, otherwise flip up
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < menuHeight && rect.top > menuHeight;
+
+    const top = openUp ? rect.top - menuHeight - 4 : rect.bottom + 4;
+    // Align with right edge of button, keeping within viewport
+    const left = Math.min(
+      window.innerWidth - menuWidth - 8,
+      Math.max(8, rect.right - menuWidth)
+    );
+
+    setCoords({ top, left });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    updateCoords();
+
+    const handleScrollOrResize = () => {
+      updateCoords();
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(target) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(target)
+      ) {
         setOpen(false);
       }
-    }
-    function handleEsc(e: KeyboardEvent) {
+    };
+
+    const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
-    }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEsc);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEsc);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
     };
-  }, [open]);
+  }, [open, updateCoords]);
+
+  const toggleOpen = () => {
+    if (!open) {
+      updateCoords();
+      setOpen(true);
+    } else {
+      setOpen(false);
+    }
+  };
 
   function run(fn: () => Promise<{ ok: boolean; error?: string }>) {
     setOpen(false);
@@ -60,10 +117,11 @@ export function BusinessActions({ id, status }: { id: number; status: string }) 
   }
 
   return (
-    <div className="relative inline-block text-left" ref={menuRef}>
+    <>
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={toggleOpen}
         disabled={pending}
         aria-label="Open business actions menu"
         aria-expanded={open}
@@ -72,10 +130,18 @@ export function BusinessActions({ id, status }: { id: number; status: string }) 
         <MoreHorizontal className="h-4 w-4" />
       </button>
 
-      {open && (
+      {/* Render menu through a portal so it floats OUTSIDE the card and table */}
+      {open && mounted && coords && createPortal(
         <div
+          ref={menuRef}
           role="menu"
-          className="absolute right-0 z-30 mt-1.5 w-44 origin-top-right rounded-xl bg-white dark:bg-[var(--surface)] py-1.5 shadow-lg ring-1 ring-gray-900/5 dark:ring-[var(--border)] focus:outline-none animate-fade-in"
+          style={{
+            position: 'fixed',
+            top: `${coords.top}px`,
+            left: `${coords.left}px`,
+            zIndex: 9999,
+          }}
+          className="w-44 rounded-xl bg-white dark:bg-[var(--surface)] py-1.5 shadow-xl ring-1 ring-black/10 dark:ring-[var(--border)] focus:outline-none animate-fade-in"
         >
           <Link
             href={`/app/businesses/${id}`}
@@ -132,7 +198,8 @@ export function BusinessActions({ id, status }: { id: number; status: string }) 
             <Trash2 className="h-3.5 w-3.5" />
             <span>Delete Business</span>
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {error && !confirmDeleteOpen && (
@@ -178,6 +245,6 @@ export function BusinessActions({ id, status }: { id: number; status: string }) 
           </div>
         </div>
       </Modal>
-    </div>
+    </>
   );
 }
