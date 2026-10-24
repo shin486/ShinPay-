@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { all } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
 import { formatDate } from '@/lib/format';
+import { getBusinesses } from '@/lib/queries';
 import { PageHeader, StatusBadge, EmptyState, Card } from '@/components/ui';
 import { BusinessFilters } from '@/components/BusinessFilters';
 import { BusinessActions } from '@/components/BusinessActions';
@@ -23,12 +23,8 @@ export default async function BusinessesPage({
   const q = (searchParams.q || '').trim().toLowerCase();
   const status = searchParams.status || '';
 
-  const rows = all(
-    `SELECT id, name, code, address, contact_information, status, created_at,
-            (SELECT COUNT(*) FROM employees WHERE business_id = businesses.id) AS employee_count
-     FROM businesses WHERE organization_id = ?`,
-    orgId,
-  ).filter((b) => {
+  const allRows = await getBusinesses(orgId);
+  const rows = allRows.filter((b) => {
     const text = `${String(b.name)} ${String(b.code)} ${String(b.address ?? '')}`.toLowerCase();
     const matchQ = !q || text.includes(q);
     const matchStatus = !status || String(b.status) === status;

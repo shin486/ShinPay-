@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
-import { get } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
+import { getBusiness } from '@/lib/queries';
 import { PageHeader, Card, EmptyState } from '@/components/ui';
 import { BusinessForm } from '@/components/BusinessForm';
 
@@ -13,7 +13,7 @@ export default async function EditBusinessPage({ params }: { params: { id: strin
   if (!user) redirect('/login');
   const orgId = user.organization_id;
   const id = Number(params.id);
-  const row = get('SELECT * FROM businesses WHERE id = ? AND organization_id = ?', id, orgId);
+  const row = await getBusiness(id, orgId);
   if (!row) return <EmptyState title="Business not found" />;
 
   return (

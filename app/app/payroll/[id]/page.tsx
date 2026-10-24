@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { all, get } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
-import { getSettings } from '@/lib/settings';
+import { getSettingsAsync } from '@/lib/settings';
 import { formatMoney, formatDate, formatDateTime } from '@/lib/format';
+import { getPayrollDetail } from '@/lib/queries';
 import { PageHeader, Card, StatusBadge, EmptyState } from '@/components/ui';
 import { PayrollActions } from '@/components/PayrollActions';
 import {
@@ -32,52 +32,17 @@ export default async function PayrollDetailPage({ params }: { params: { id: stri
   const orgId = user.organization_id;
   const id = Number(params.id);
 
-  const p = get(
-    'SELECT * FROM payroll WHERE id = ? AND organization_id = ?',
-    id,
-    orgId
-  ) as Record<string, unknown> | undefined;
+  const detail = await getPayrollDetail(id, orgId);
+  if (!detail || !detail.payroll) return <EmptyState title="Payroll not found" message="This payroll record does not exist or has been removed." />;
 
-  if (!p) return <EmptyState title="Payroll not found" message="This payroll record does not exist or has been removed." />;
-
-  const business = get(
-    'SELECT name FROM businesses WHERE id = ? AND organization_id = ?',
-    Number(p.business_id),
-    orgId
-  ) as { name: string } | undefined;
-
-  const settings = getSettings();
+  const p = detail.payroll as Record<string, unknown>;
+  const business = detail.business as { name: string } | null;
+  const settings = await getSettingsAsync();
   const sym = settings.currency_symbol || '₱';
 
-  const items = all(
-    `SELECT pi.*, e.employee_id AS emp_code, e.first_name, e.last_name, e.position
-     FROM payroll_items pi
-     JOIN employees e ON e.id = pi.employee_id
-     WHERE pi.payroll_id = ?
-     ORDER BY e.last_name`,
-    id
-  );
-
-  // Statutory deduction breakdown
-  const deductionBreakdown = all(
-    `SELECT pid.name, SUM(pid.amount) AS total
-     FROM payroll_item_deductions pid
-     JOIN payroll_items pi ON pi.id = pid.payroll_item_id
-     WHERE pi.payroll_id = ?
-     GROUP BY pid.name
-     ORDER BY total DESC`,
-    id
-  ) as Array<{ name: string; total: number }>;
-
-  // Audit record for finalization
-  const finalizationAudit = get(
-    `SELECT al.*, u.display_name AS actor_name
-     FROM audit_log al
-     LEFT JOIN users u ON u.id = al.user_id
-     WHERE al.entity = 'payroll' AND al.entity_id = ? AND al.action = 'PAYROLL_FINALIZED'
-     ORDER BY al.id DESC LIMIT 1`,
-    id
-  ) as Record<string, unknown> | undefined;
+  const items = detail.items as Array<Record<string, unknown>>;
+  const deductionBreakdown = detail.deductionBreakdown as Array<{ name: string; total: number }>;
+  const finalizationAudit = detail.finalizationAudit as Record<string, unknown> | null;
 
   const totalGross = items.reduce((s, r) => s + Number(r.gross_pay), 0);
   const totalDeductions = items.reduce((s, r) => s + Number(r.total_deductions), 0);
@@ -326,7 +291,7 @@ export default async function PayrollDetailPage({ params }: { params: { id: stri
               <tbody>
                 {items.map((i) => {
                   const extraEarnings =
-                    Number(i.overtime) + Number(i.allowances) + Number(i.bonuses) + Number(i.commissions) + Number(i.other_earnings);
+                    Number(i.overtime || 0) + Number(i.allowances || 0) + Number(i.bonuses || 0) + Number(i.commissions || 0) + Number(i.other_earnings || 0);
                   const initials = `${String(i.first_name).charAt(0)}${String(i.last_name).charAt(0)}`.toUpperCase();
 
                   return (
@@ -350,7 +315,7 @@ export default async function PayrollDetailPage({ params }: { params: { id: stri
                         </div>
                       </td>
                       <td className="td text-right font-mono text-[var(--text-secondary)]">
-                        {formatMoney(i.basic_pay, sym)}
+                        {formatMoney(Number(i.basic_pay), sym)}
                       </td>
                       <td className="td text-right font-mono text-[var(--text-secondary)]">
                         {extraEarnings > 0 ? (
@@ -362,13 +327,13 @@ export default async function PayrollDetailPage({ params }: { params: { id: stri
                         )}
                       </td>
                       <td className="td text-right font-semibold font-mono text-[var(--text-primary)]">
-                        {formatMoney(i.gross_pay, sym)}
+                        {formatMoney(Number(i.gross_pay), sym)}
                       </td>
                       <td className="td text-right font-mono text-red-600 dark:text-red-400">
-                        -{formatMoney(i.total_deductions, sym)}
+                        -{formatMoney(Number(i.total_deductions), sym)}
                       </td>
                       <td className="td text-right font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                        {formatMoney(i.net_pay, sym)}
+                        {formatMoney(Number(i.net_pay), sym)}
                       </td>
                       <td className="td text-right">
                         <Link

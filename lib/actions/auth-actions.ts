@@ -95,18 +95,26 @@ export async function loginAction(formData: FormData): Promise<ActionResult> {
   }
 
   // 2. SQLite session fallback
-  init();
-  const userId = verifyCredentials(usernameOrEmail, password);
-  if (!userId) return { ok: false, error: 'Invalid username or password.' };
-
-  createSession(userId);
   try {
-    run("UPDATE users SET last_login_at = datetime('now') WHERE id = ?", userId);
-  } catch {
-    // ignore
+    init();
+    const userId = verifyCredentials(usernameOrEmail, password);
+    if (!userId) return { ok: false, error: 'Invalid username or password.' };
+
+    createSession(userId);
+    try {
+      run("UPDATE users SET last_login_at = datetime('now') WHERE id = ?", userId);
+    } catch {
+      // ignore
+    }
+    recordAudit(userId, 'LOGIN', 'user', userId, null);
+    return { ok: true };
+  } catch (err: any) {
+    console.error('Login fallback error:', err);
+    return {
+      ok: false,
+      error: 'Unable to connect to database. If running on Vercel, please verify that NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Project Settings > Environment Variables.',
+    };
   }
-  recordAudit(userId, 'LOGIN', 'user', userId, null);
-  return { ok: true };
 }
 
 export async function logoutAction(): Promise<void> {
@@ -194,16 +202,17 @@ export async function registerAction(formData: FormData): Promise<ActionResult> 
   }
 
   // 2. SQLite registration fallback
-  init();
-  const dup = get('SELECT id FROM users WHERE username = ? OR email = ?', username, email);
-  if (dup) return { ok: false, error: 'Username or email already in use.' };
-
   try {
+    init();
+    const dup = get('SELECT id FROM users WHERE username = ? OR email = ?', username, email);
+    if (dup) return { ok: false, error: 'Username or email already in use.' };
+
     const userId = registerUser({ username, email, password, fullName });
     recordAudit(userId, 'REGISTER', 'user', userId, null);
     createSession(userId);
-  } catch {
-    return { ok: false, error: 'Registration failed. Please try again.' };
+  } catch (err: any) {
+    console.error('Registration fallback error:', err);
+    return { ok: false, error: 'Registration failed. Please ensure Supabase environment variables are configured in Vercel.' };
   }
 
   redirect('/organization/setup');

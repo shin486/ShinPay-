@@ -1,14 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { all, idNameOptions } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
-import { getSettings } from '@/lib/settings';
+import { getSettingsAsync } from '@/lib/settings';
 import { formatMoney } from '@/lib/format';
+import { getBusinessOptions, getEmployees } from '@/lib/queries';
 import { PageHeader, StatusBadge, EmptyState, Card } from '@/components/ui';
 import { EmployeeFilters } from '@/components/EmployeeFilters';
 import { EmployeeActions } from '@/components/EmployeeActions';
-import type { IdNameOption } from '@/lib/db';
 import { Plus } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -25,17 +24,14 @@ export default async function EmployeesPage({
   const q = (searchParams.q || '').trim().toLowerCase();
   const businessFilter = searchParams.business || '';
   const statusFilter = searchParams.status || '';
-  const sym = getSettings().currency_symbol || '\u20B1';
+  
+  const settings = await getSettingsAsync();
+  const sym = settings.currency_symbol || '\u20B1';
 
-  const businesses: IdNameOption[] = idNameOptions("SELECT id, name FROM businesses WHERE organization_id = ? ORDER BY name", orgId);
-  const rows = all(
-    `SELECT e.id, e.employee_id, e.first_name, e.middle_name, e.last_name, e.suffix,
-            e.position, e.status, b.name AS business_name, e.business_id,
-            (SELECT es.basic_rate FROM employee_salary es WHERE es.employee_id = e.id ORDER BY COALESCE(es.effective_date, '0000-01-01') DESC, es.id DESC LIMIT 1) AS basic_rate,
-            (SELECT es.salary_type FROM employee_salary es WHERE es.employee_id = e.id ORDER BY COALESCE(es.effective_date, '0000-01-01') DESC, es.id DESC LIMIT 1) AS salary_type
-     FROM employees e JOIN businesses b ON b.id = e.business_id WHERE e.organization_id = ?`,
-    orgId
-  ).filter((e) => {
+  const businesses = await getBusinessOptions(orgId);
+  const allEmployees = await getEmployees(orgId);
+
+  const rows = allEmployees.filter((e) => {
     const name = `${String(e.first_name)} ${String(e.middle_name ?? '')} ${String(e.last_name)}`.toLowerCase();
     const text = `${name} ${String(e.employee_id)}`.toLowerCase();
     const matchQ = !q || text.includes(q);

@@ -51,7 +51,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 
       // Query active organization membership
       const db = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
-      const { data: member } = await db
+      const { data: memberRows } = await db
         .from('organization_members')
         .select(`
           organization_id,
@@ -63,8 +63,9 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
         `)
         .eq('user_id', user.id)
         .eq('status', 'active')
-        .limit(1)
-        .maybeSingle();
+        .order('id', { ascending: true });
+
+      const member = (memberRows && memberRows.length > 0) ? memberRows[0] : null;
 
       const org = member?.organizations as unknown as { id: number; name: string } | null;
       let orgId = member?.organization_id ?? org?.id ?? null;
@@ -105,58 +106,62 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   }
 
   // 2. SQLite session fallback
-  const store = cookies();
-  const token = store.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  const row = get(
-    `SELECT s.id AS sid, u.id, u.username, u.email, u.full_name, u.display_name, u.role,
-            om.organization_id, om.role AS organization_role, o.name AS organization_name
-     FROM sessions s
-     JOIN users u ON u.id = s.user_id
-     LEFT JOIN organization_members om ON om.user_id = u.id AND om.status = 'active'
-     LEFT JOIN organizations o ON o.id = om.organization_id
-     WHERE s.id = ? AND s.expires_at > datetime('now') AND u.status = 'active'`,
-    token
-  );
-  if (!row) return null;
+  try {
+    const store = cookies();
+    const token = store.get(COOKIE_NAME)?.value;
+    if (!token) return null;
+    const row = get(
+      `SELECT s.id AS sid, u.id, u.username, u.email, u.full_name, u.display_name, u.role,
+              om.organization_id, om.role AS organization_role, o.name AS organization_name
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+       LEFT JOIN organization_members om ON om.user_id = u.id AND om.status = 'active'
+       LEFT JOIN organizations o ON o.id = om.organization_id
+       WHERE s.id = ? AND s.expires_at > datetime('now') AND u.status = 'active'`,
+      token
+    );
+    if (!row) return null;
 
-  let orgId = row.organization_id ? Number(row.organization_id) : null;
-  let orgName = row.organization_name ? String(row.organization_name) : null;
-  let orgRole = row.organization_role ? String(row.organization_role) : null;
+    let orgId = row.organization_id ? Number(row.organization_id) : null;
+    let orgName = row.organization_name ? String(row.organization_name) : null;
+    let orgRole = row.organization_role ? String(row.organization_role) : null;
 
-  if (!orgId) {
-    const defaultOrg = get('SELECT id, name FROM organizations ORDER BY id ASC LIMIT 1') as
-      | { id: number; name: string }
-      | undefined;
-    if (defaultOrg) {
-      orgId = Number(defaultOrg.id);
-      orgName = String(defaultOrg.name);
-      orgRole = 'owner';
-      try {
-        run(
-          'INSERT OR IGNORE INTO organization_members (organization_id, user_id, role, status) VALUES (?, ?, ?, ?)',
-          orgId,
-          Number(row.id),
-          'owner',
-          'active'
-        );
-      } catch {
-        // ignore
+    if (!orgId) {
+      const defaultOrg = get('SELECT id, name FROM organizations ORDER BY id ASC LIMIT 1') as
+        | { id: number; name: string }
+        | undefined;
+      if (defaultOrg) {
+        orgId = Number(defaultOrg.id);
+        orgName = String(defaultOrg.name);
+        orgRole = 'owner';
+        try {
+          run(
+            'INSERT OR IGNORE INTO organization_members (organization_id, user_id, role, status) VALUES (?, ?, ?, ?)',
+            orgId,
+            Number(row.id),
+            'owner',
+            'active'
+          );
+        } catch {
+          // ignore
+        }
       }
     }
-  }
 
-  return {
-    id: Number(row.id),
-    username: String(row.username),
-    email: String(row.email ?? ''),
-    full_name: String(row.full_name ?? ''),
-    display_name: String(row.display_name),
-    role: String(row.role),
-    organization_id: orgId,
-    organization_name: orgName,
-    organization_role: orgRole,
-  };
+    return {
+      id: Number(row.id),
+      username: String(row.username),
+      email: String(row.email ?? ''),
+      full_name: String(row.full_name ?? ''),
+      display_name: String(row.display_name),
+      role: String(row.role),
+      organization_id: orgId,
+      organization_name: orgName,
+      organization_role: orgRole,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Ensure the caller is an authenticated user. */

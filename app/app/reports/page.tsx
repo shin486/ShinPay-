@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { all, idNameOptions } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
-import { getSettings } from '@/lib/settings';
+import { getSettingsAsync } from '@/lib/settings';
 import { formatMoney, formatDate } from '@/lib/format';
+import { getBusinessOptions, getReportEmployees, getReportsData } from '@/lib/queries';
 import { PageHeader, Card, EmptyState } from '@/components/ui';
 import { ReportFilters } from '@/components/ReportFilters';
-import type { IdNameOption } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,81 +19,22 @@ export default async function ReportsPage({
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   const orgId = user.organization_id;
-  const sym = getSettings().currency_symbol || '\u20B1';
+  const settings = await getSettingsAsync();
+  const sym = settings.currency_symbol || '\u20B1';
   const businessFilter = searchParams.business || '';
   const from = searchParams.from || '';
   const to = searchParams.to || '';
   const employeeFilter = searchParams.employee || '';
 
-  const businesses: IdNameOption[] = idNameOptions("SELECT id, name FROM businesses WHERE organization_id = ? ORDER BY name", orgId);
-  const employees: IdNameOption[] = idNameOptions(
-    "SELECT e.id, (e.last_name || ', ' || e.first_name) AS name FROM employees e WHERE e.organization_id = ? AND e.status = 'active' ORDER BY name", orgId
-  );
+  const businesses = await getBusinessOptions(orgId);
+  const employees = await getReportEmployees(orgId);
 
-  // Payroll summary across finalized payrolls in scope
-  const sumClauses: string[] = ["p.status = 'finalized'", "p.organization_id = ?"];
-  const sumParams: unknown[] = [orgId];
-  if (businessFilter) { sumClauses.push('p.business_id = ?'); sumParams.push(Number(businessFilter)); }
-  if (from) { sumClauses.push('p.payroll_period_end >= ?'); sumParams.push(from); }
-  if (to) { sumClauses.push('p.payroll_period_start <= ?'); sumParams.push(to); }
-  const summaryRows = all(
-    `SELECT COUNT(DISTINCT p.id) AS periods, COALESCE(SUM(p.employee_count), 0) AS employees,
-            COALESCE(SUM(p.total_gross), 0) AS gross, COALESCE(SUM(p.total_deductions), 0) AS deductions,
-            COALESCE(SUM(p.total_net), 0) AS net
-     FROM payroll p WHERE ${sumClauses.join(' AND ')}`,
-    ...sumParams
-  )[0];
-
-  // Payroll by business (finalized, in scope)
-  const byBusinessFilterParams: unknown[] = [];
-  const byBusiness = all(
-    `SELECT b.name, COALESCE(SUM(p.total_net), 0) AS net, COUNT(p.id) AS periods
-     FROM businesses b
-     LEFT JOIN payroll p ON p.business_id = b.id AND p.status = 'finalized'
-     ${businessFilter ? 'AND p.business_id = ?' : ''}
-     ${from ? 'AND p.payroll_period_end >= ?' : ''}
-     ${to ? 'AND p.payroll_period_start <= ?' : ''}
-     WHERE b.organization_id = ?
-     GROUP BY b.id, b.name ORDER BY b.name`,
-    ...(businessFilter ? [Number(businessFilter)] : []),
-    ...(from ? [from] : []),
-    ...(to ? [to] : []),
-    orgId
-  );
-
-  // Employee payroll history
-  const empClauses: string[] = ["pi.payroll_id = p.id", "p.status = 'finalized'", "p.organization_id = ?"];
-  const empParams: unknown[] = [orgId];
-  if (employeeFilter) { empClauses.push('pi.employee_id = ?'); empParams.push(Number(employeeFilter)); }
-  if (businessFilter) { empClauses.push('p.business_id = ?'); empParams.push(Number(businessFilter)); }
-  if (from) { empClauses.push('p.payroll_period_end >= ?'); empParams.push(from); }
-  if (to) { empClauses.push('p.payroll_period_start <= ?'); empParams.push(to); }
-  const empReport = all(
-    `SELECT e.first_name, e.last_name, e.employee_id, p.payroll_period_start, p.payroll_period_end,
-            pi.gross_pay, pi.total_deductions, pi.net_pay
-     FROM payroll_items pi
-     JOIN employees e ON e.id = pi.employee_id
-     JOIN payroll p ON ${empClauses.join(' AND ')}
-     ORDER BY e.last_name, p.payroll_period_end DESC`,
-    ...empParams
-  );
-
-  // Deduction report
-  const dedClauses: string[] = ["p.organization_id = ?"];
-  const dedParams: unknown[] = [orgId];
-  if (businessFilter) { dedClauses.push('p.business_id = ?'); dedParams.push(Number(businessFilter)); }
-  if (from) { dedClauses.push('p.payroll_period_end >= ?'); dedParams.push(from); }
-  if (to) { dedClauses.push('p.payroll_period_start <= ?'); dedParams.push(to); }
-  const dedWhere = dedClauses.length ? `AND ${dedClauses.join(' AND ')}` : '';
-  const dedReport = all(
-    `SELECT pid.name, SUM(pid.amount) AS total, COUNT(DISTINCT pi.employee_id) AS employees
-     FROM payroll_item_deductions pid
-     JOIN payroll_items pi ON pi.id = pid.payroll_item_id
-     JOIN payroll p ON p.id = pi.payroll_id AND p.status = 'finalized'
-     WHERE ${dedClauses.join(' AND ')}
-     GROUP BY pid.name ORDER BY pid.name`,
-    ...dedParams
-  );
+  const { summaryRows, byBusiness, empReport, dedReport } = await getReportsData(orgId, {
+    business: businessFilter,
+    from,
+    to,
+    employee: employeeFilter,
+  });
 
   const summaryGross = Number(summaryRows?.gross || 0);
   const summaryDed = Number(summaryRows?.deductions || 0);
@@ -136,7 +76,7 @@ export default async function ReportsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {byBusiness.map((b) => (
+                  {byBusiness.map((b: any) => (
                     <tr key={String(b.name)} className="table-row">
                       <td className="td font-medium text-[var(--text-primary)]">{String(b.name)}</td>
                       <td className="td text-right text-xs text-[var(--text-muted)] font-mono">{String(b.periods)} cycle(s)</td>
@@ -147,7 +87,7 @@ export default async function ReportsPage({
                     <td className="td text-[var(--text-primary)]">TOTAL</td>
                     <td className="td" />
                     <td className="td text-right font-mono text-emerald-600 dark:text-emerald-400 text-base">
-                      {formatMoney(byBusiness.reduce((s, b) => s + Number(b.net), 0), sym)}
+                      {formatMoney(byBusiness.reduce((s: number, b: any) => s + Number(b.net), 0), sym)}
                     </td>
                   </tr>
                 </tbody>
@@ -173,7 +113,7 @@ export default async function ReportsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {empReport.map((r, idx) => (
+                  {empReport.map((r: any, idx: number) => (
                     <tr key={idx} className="table-row">
                       <td className="td text-[var(--text-primary)]">
                         {formatDate(String(r.payroll_period_start))} — {formatDate(String(r.payroll_period_end))}
@@ -203,7 +143,7 @@ export default async function ReportsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {dedReport.map((d) => (
+                  {dedReport.map((d: any) => (
                     <tr key={String(d.name)} className="table-row">
                       <td className="td font-medium text-[var(--text-primary)]">{String(d.name)}</td>
                       <td className="td text-right text-xs text-[var(--text-muted)] font-mono">{String(d.employees)}</td>

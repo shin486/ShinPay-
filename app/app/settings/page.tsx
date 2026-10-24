@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import { all } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
 import { formatDate } from '@/lib/format';
@@ -21,8 +20,9 @@ import {
   LayoutGrid,
 } from 'lucide-react';
 
-import { getSettings, getSettingsAsync } from '@/lib/settings';
-import { getOrganizationModules, getOrganizationModulesAsync } from '@/lib/modules';
+import { getSettingsAsync } from '@/lib/settings';
+import { getOrganizationModulesAsync } from '@/lib/modules';
+import { getSettingsData } from '@/lib/queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,23 +37,11 @@ export default async function SettingsPage() {
   const userRole = (user.organization_role || user.role || '').toLowerCase();
   const canManageModules = userRole === 'owner' || userRole === 'admin';
 
-  const earningTypes = all(
-    'SELECT * FROM earning_types WHERE organization_id = ? ORDER BY name',
-    orgId
-  ) as unknown as TypeRow[];
-  const deductionTypes = all(
-    'SELECT * FROM deduction_types WHERE organization_id = ? ORDER BY name',
-    orgId
-  ) as unknown as TypeRow[];
-
-  const audit = all(
-    'SELECT * FROM audit_log WHERE organization_id = ? ORDER BY id DESC LIMIT 20',
-    orgId
-  );
-  const users = all(
-    "SELECT u.id, u.username, u.display_name, u.role, u.status FROM users u JOIN organization_members om ON om.user_id = u.id WHERE om.organization_id = ? AND om.status = 'active'",
-    orgId
-  );
+  const data = await getSettingsData(orgId);
+  const earningTypes = data.earningTypes as unknown as TypeRow[];
+  const deductionTypes = data.deductionTypes as unknown as TypeRow[];
+  const audit = data.audit;
+  const users = data.users;
 
   return (
     <div className="space-y-6">
@@ -160,7 +148,7 @@ export default async function SettingsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {users.map((u) => (
+                {users.map((u: any) => (
                   <tr key={String(u.id)} className="hover:bg-[var(--surface-raised)] transition-colors">
                     <td className="py-3 font-mono font-medium text-[var(--text-primary)]">{String(u.username)}</td>
                     <td className="py-3 text-[var(--text-secondary)]">{String(u.display_name)}</td>
@@ -216,14 +204,14 @@ export default async function SettingsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {audit.map((a) => (
+                {audit.map((a: any) => (
                   <tr key={String(a.id)} className="table-row">
                     <td className="td text-xs text-[var(--text-muted)] whitespace-nowrap">{formatDate(String(a.created_at))}</td>
                     <td className="td font-mono text-xs font-semibold text-[var(--accent)]">{String(a.action)}</td>
                     <td className="td font-medium text-[var(--text-primary)]">
                       {String(a.entity)} {a.entity_id ? <span className="text-xs text-[var(--text-muted)] font-mono">#{String(a.entity_id)}</span> : ''}
                     </td>
-                    <td className="td max-w-md truncate text-xs text-[var(--text-muted)]">{String(a.details || '—')}</td>
+                    <td className="td max-w-md truncate text-xs text-[var(--text-muted)]">{typeof a.details === 'object' ? JSON.stringify(a.details) : String(a.details || '—')}</td>
                   </tr>
                 ))}
               </tbody>

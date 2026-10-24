@@ -1,10 +1,9 @@
 import { redirect } from 'next/navigation';
-import { all, get, idNameOptions } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
+import { getEmployee, getBusinessOptions } from '@/lib/queries';
 import { PageHeader, Card, EmptyState } from '@/components/ui';
 import { EmployeeForm } from '@/components/EmployeeForm';
-import type { IdNameOption } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +13,10 @@ export default async function EditEmployeePage({ params }: { params: { id: strin
   if (!user) redirect('/login');
   const orgId = user.organization_id;
   const id = Number(params.id);
-  const row = get('SELECT * FROM employees WHERE id = ? AND organization_id = ?', id, orgId);
+
+  const row = await getEmployee(id, orgId);
   if (!row) return <EmptyState title="Employee not found" />;
-  const businesses: IdNameOption[] = idNameOptions("SELECT id, name FROM businesses WHERE organization_id = ? AND status = 'active' ORDER BY name", orgId);
+  const businesses = await getBusinessOptions(orgId);
 
   return (
     <div className="mx-auto max-w-4xl">

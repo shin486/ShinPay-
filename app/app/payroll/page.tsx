@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { all } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
-import { getSettings } from '@/lib/settings';
+import { getSettingsAsync } from '@/lib/settings';
 import { formatMoney, formatDate } from '@/lib/format';
+import { getPayrolls } from '@/lib/queries';
 import { PageHeader, StatusBadge, EmptyState } from '@/components/ui';
-import { Plus, Calendar, Banknote, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Plus, Calendar, ShieldCheck } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,15 +15,10 @@ export default async function PayrollPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   const orgId = user.organization_id;
-  const sym = getSettings().currency_symbol || '₱';
+  const settings = await getSettingsAsync();
+  const sym = settings.currency_symbol || '₱';
 
-  const payrolls = all(
-    `SELECT p.*, b.name AS business_name FROM payroll p
-     JOIN businesses b ON b.id = p.business_id
-     WHERE p.organization_id = ?
-     ORDER BY p.created_at DESC`,
-    orgId
-  );
+  const payrolls = await getPayrolls(orgId);
 
   return (
     <div className="space-y-6 animate-fade-in">

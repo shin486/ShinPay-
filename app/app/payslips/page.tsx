@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { all } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
-import { getSettings } from '@/lib/settings';
-import { formatMoney, formatDate, formatDateTime } from '@/lib/format';
+import { getSettingsAsync } from '@/lib/settings';
+import { formatMoney, formatDate } from '@/lib/format';
+import { getFinalizedPayrolls, getPayslipItems } from '@/lib/queries';
 import { PageHeader, EmptyState } from '@/components/ui';
 import { PayslipSelector } from '@/components/PayslipSelector';
-import { FileText, ArrowRight, ShieldCheck } from 'lucide-react';
+import { FileText, ShieldCheck } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,16 +16,11 @@ export default async function PayslipsPage({ searchParams }: { searchParams: { p
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   const orgId = user.organization_id;
-  const sym = getSettings().currency_symbol || '₱';
+  const settings = await getSettingsAsync();
+  const sym = settings.currency_symbol || '₱';
   const payrollId = searchParams.payroll ? Number(searchParams.payroll) : 0;
 
-  const payrolls = all(
-    `SELECT p.*, b.name AS business_name FROM payroll p
-     JOIN businesses b ON b.id = p.business_id
-     WHERE p.status = 'finalized' AND p.organization_id = ?
-     ORDER BY p.payroll_period_end DESC`,
-    orgId
-  );
+  const payrolls = await getFinalizedPayrolls(orgId);
 
   const selectorOptions = payrolls.map((p) => ({
     id: Number(p.id),
@@ -38,14 +33,7 @@ export default async function PayslipsPage({ searchParams }: { searchParams: { p
   if (payrollId) {
     selectedPayroll = payrolls.find((x) => Number(x.id) === payrollId);
     if (selectedPayroll) {
-      items = all(
-        `SELECT pi.*, e.employee_id AS emp_code, e.first_name, e.last_name, e.position
-         FROM payroll_items pi
-         JOIN employees e ON e.id = pi.employee_id
-         WHERE pi.payroll_id = ?
-         ORDER BY e.last_name`,
-        payrollId
-      );
+      items = await getPayslipItems(payrollId);
     }
   }
 
@@ -137,13 +125,13 @@ export default async function PayslipsPage({ searchParams }: { searchParams: { p
                           {String(i.emp_code)}
                         </td>
                         <td className="td text-right font-mono text-[var(--text-secondary)]">
-                          {formatMoney(i.gross_pay, sym)}
+                          {formatMoney(Number(i.gross_pay), sym)}
                         </td>
                         <td className="td text-right font-mono text-red-600 dark:text-red-400">
-                          -{formatMoney(i.total_deductions, sym)}
+                          -{formatMoney(Number(i.total_deductions), sym)}
                         </td>
                         <td className="td text-right font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                          {formatMoney(i.net_pay, sym)}
+                          {formatMoney(Number(i.net_pay), sym)}
                         </td>
                         <td className="td text-right">
                           <Link

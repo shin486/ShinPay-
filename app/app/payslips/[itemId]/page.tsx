@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { all, get } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
-import { getSettings, getSetting } from '@/lib/settings';
+import { getSettingsAsync, getSetting } from '@/lib/settings';
 import { fullName } from '@/lib/format';
+import { getPayslipDetail } from '@/lib/queries';
 import { EmptyState } from '@/components/ui';
 import { Payslip } from '@/components/Payslip';
 import { PrintButton } from '@/components/PrintButton';
@@ -19,27 +19,19 @@ export default async function PayslipPage({ params }: { params: { itemId: string
   const orgId = user.organization_id;
   const itemId = Number(params.itemId);
 
-  const item = get('SELECT * FROM payroll_items WHERE id = ?', itemId) as Record<string, unknown> | undefined;
-  if (!item) return <EmptyState title="Payslip not found" message="This employee pay slip does not exist." />;
+  const detail = await getPayslipDetail(itemId, orgId);
+  if (!detail || !detail.item) return <EmptyState title="Payslip not found" message="This employee pay slip does not exist." />;
 
-  const payroll = get('SELECT * FROM payroll WHERE id = ? AND organization_id = ?', Number(item.payroll_id), orgId) as Record<string, unknown> | undefined;
-  const employee = get('SELECT * FROM employees WHERE id = ? AND organization_id = ?', Number(item.employee_id), orgId) as Record<string, unknown> | undefined;
-  const business = payroll ? (get('SELECT name FROM businesses WHERE id = ? AND organization_id = ?', Number(payroll.business_id), orgId) as { name: string } | undefined) : undefined;
+  const item = detail.item as Record<string, unknown>;
+  const payroll = detail.payroll as Record<string, unknown>;
+  const employee = detail.employee as Record<string, unknown>;
+  const business = detail.business as { name: string } | undefined;
+  const earnings = detail.earnings as { name: string; amount: number }[];
+  const deductions = detail.deductions as { name: string; amount: number }[];
 
-  const settings = getSettings();
+  const settings = await getSettingsAsync();
   const sym = settings.currency_symbol || '₱';
-  const systemName = getSetting('system_name', 'ShinPay+ Workforce OS');
-
-  const earnings = all(
-    'SELECT name, amount FROM payroll_item_earnings WHERE payroll_item_id = ? ORDER BY id',
-    itemId
-  );
-  const deductions = all(
-    'SELECT name, amount FROM payroll_item_deductions WHERE payroll_item_id = ? ORDER BY id',
-    itemId
-  );
-
-  if (!payroll || !employee) return <EmptyState title="Payslip data missing" message="Could not resolve payroll run or employee record." />;
+  const systemName = settings.system_name || 'ShinPay+ Workforce OS';
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -88,8 +80,8 @@ export default async function PayslipPage({ params }: { params: { itemId: string
           total_deductions: Number(item.total_deductions),
           net_pay: Number(item.net_pay),
         }}
-        earnings={earnings as { name: string; amount: number }[]}
-        deductions={deductions as { name: string; amount: number }[]}
+        earnings={earnings}
+        deductions={deductions}
       />
     </div>
   );

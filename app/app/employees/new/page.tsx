@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
-import { idNameOptions } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
+import { getBusinessOptions } from '@/lib/queries';
 import { PageHeader, Card } from '@/components/ui';
 import { EmployeeForm } from '@/components/EmployeeForm';
 import type { IdNameOption } from '@/lib/db';
@@ -13,7 +13,7 @@ export default async function NewEmployeePage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   const orgId = user.organization_id;
-  const businesses: IdNameOption[] = idNameOptions("SELECT id, name FROM businesses WHERE organization_id = ? AND status = 'active' ORDER BY name", orgId);
+  const businesses: IdNameOption[] = await getBusinessOptions(orgId);
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader title="Add Employee" subtitle="Create a new employee record" />

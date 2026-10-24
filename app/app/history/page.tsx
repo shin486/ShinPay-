@@ -1,15 +1,14 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { all, idNameOptions } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
-import { getSettings } from '@/lib/settings';
+import { getSettingsAsync } from '@/lib/settings';
 import { formatMoney, formatDate, formatDateTime } from '@/lib/format';
+import { getPayrolls, getBusinessOptions } from '@/lib/queries';
 import { PageHeader, StatusBadge, EmptyState } from '@/components/ui';
 import { HistoryFilters } from '@/components/HistoryFilters';
 import { CsvDownload } from '@/components/CsvDownload';
 import { exportPayrollsCsvAction } from '@/lib/actions/report-actions';
-import type { IdNameOption } from '@/lib/db';
 import { FileText, Download, Calendar, Building2, Users, Banknote, ArrowUpRight } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -23,22 +22,17 @@ export default async function HistoryPage({
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   const orgId = user.organization_id;
-  const sym = getSettings().currency_symbol || '\u20B1';
+  const settings = await getSettingsAsync();
+  const sym = settings.currency_symbol || '\u20B1';
   const businessFilter = searchParams.business || '';
   const statusFilter = searchParams.status || '';
   const from = searchParams.from || '';
   const to = searchParams.to || '';
 
-  const businesses: IdNameOption[] = idNameOptions(
-    'SELECT id, name FROM businesses WHERE organization_id = ? ORDER BY name',
-    orgId
-  );
+  const businesses = await getBusinessOptions(orgId);
+  const allPayrolls = await getPayrolls(orgId);
 
-  const payrolls = all(
-    `SELECT p.*, b.name AS business_name FROM payroll p JOIN businesses b ON b.id = p.business_id
-     WHERE p.organization_id = ? ORDER BY p.payroll_period_end DESC`,
-    orgId
-  ).filter((r) => {
+  const payrolls = allPayrolls.filter((r) => {
     const matchBusiness = !businessFilter || String(r.business_id) === businessFilter;
     const matchStatus = !statusFilter || String(r.status) === statusFilter;
     const matchFrom = !from || String(r.payroll_period_end) >= from;
