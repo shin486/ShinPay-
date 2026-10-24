@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { init } from '@/lib/init';
 import { formatDate } from '@/lib/format';
 import { getBusinesses } from '@/lib/queries';
-import { PageHeader, StatusBadge, EmptyState, Card } from '@/components/ui';
+import { StatusBadge, EmptyState } from '@/components/ui';
 import { BusinessFilters } from '@/components/BusinessFilters';
 import { BusinessActions } from '@/components/BusinessActions';
 import { Plus } from 'lucide-react';
@@ -32,92 +32,126 @@ export default async function BusinessesPage({
   });
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <PageHeader
-        title="Registered Businesses"
-        subtitle="Manage your multi-entity corporate units, branches, and employer identification codes."
-        actions={
-          <Link href="/app/businesses/new" className="btn-primary">
-            <Plus className="h-4 w-4" />
-            <span>Add Business Entity</span>
-          </Link>
-        }
-      />
+    <div className="min-h-[calc(100vh-4rem)] -m-4 sm:-m-6 lg:-m-8 p-4 sm:p-6 lg:p-8 bg-slate-50/70 dark:bg-transparent space-y-6 animate-fade-in">
+      {/* ── Page Header ── */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-[var(--text-primary)]">
+          Registered Businesses
+        </h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-[var(--text-muted)]">
+          Manage businesses, branches, and entity codes under your organization.
+        </p>
+      </div>
 
-      <BusinessFilters />
+      {/* ── Inline Filter Bar & Primary Action ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <BusinessFilters />
 
-      <div className="card flex flex-col overflow-hidden">
-        <div
-          className="flex items-center justify-between gap-3 px-5 py-4 border-b"
-          style={{ borderColor: 'var(--border)' }}
+        <Link
+          href="/app/businesses/new"
+          className="btn-primary inline-flex items-center justify-center gap-2 shrink-0"
         >
-          <div>
-            <h3 className="text-base font-bold text-[var(--text-primary)]">
-              Corporate Units ({rows.length})
-            </h3>
-            <p className="text-xs text-[var(--text-muted)]">
-              Active registered employers under your organization
-            </p>
-          </div>
-          <span className="rounded-lg px-2.5 py-1 text-xs font-semibold bg-[var(--surface-raised)] border border-[var(--border)] text-[var(--text-secondary)]">
-            Multi-Tenancy Active
-          </span>
-        </div>
+          <Plus className="h-4 w-4" />
+          <span>Add Business Entity</span>
+        </Link>
+      </div>
 
+      {/* ── Pure White Elevated Data Table Container ── */}
+      <div className="bg-white dark:bg-[var(--surface)] rounded-xl shadow-sm ring-1 ring-gray-200/50 dark:ring-[var(--border)]">
         {rows.length === 0 ? (
-          <div className="p-8">
+          <div className="p-10">
             <EmptyState
               title="No businesses found"
               message="Register your first business entity to begin enrolling employees and processing cut-offs."
               action={
                 <Link href="/app/businesses/new" className="btn-primary" style={{ fontSize: '0.8125rem' }}>
                   <Plus className="h-3.5 w-3.5" />
-                  Add Business
+                  Add Business Entity
                 </Link>
               }
             />
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full">
+            <table className="min-w-full divide-y divide-gray-200/70 dark:divide-[var(--border)]">
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-                  <th className="th">Business Name</th>
-                  <th className="th">Entity Code</th>
-                  <th className="th">Registered Office</th>
-                  <th className="th text-right">Headcount</th>
-                  <th className="th">Status</th>
-                  <th className="th">Registration Date</th>
-                  <th className="th text-right">Actions</th>
+                <tr className="bg-gray-50/60 dark:bg-[var(--bg-secondary)]">
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider first:rounded-tl-xl"
+                  >
+                    Business Name
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                  >
+                    Entity Code
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                  >
+                    Registered Office
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                  >
+                    Headcount
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                  >
+                    Status
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                  >
+                    Registration Date
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider last:rounded-tr-xl"
+                  >
+                    Actions
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100 dark:divide-[var(--border)]">
                 {rows.map((b) => (
-                  <tr key={String(b.id)} className="table-row">
-                    <td className="td">
+                  <tr
+                    key={String(b.id)}
+                    className="hover:bg-gray-50/70 dark:hover:bg-[var(--surface-raised)] transition-colors"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <Link
                         href={`/app/businesses/${b.id}`}
-                        className="font-bold text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors"
+                        className="font-semibold text-gray-900 dark:text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors"
                       >
                         {String(b.name)}
                       </Link>
                     </td>
-                    <td className="td font-mono text-xs text-[var(--text-secondary)]">
-                      <span className="rounded px-2 py-0.5 bg-[var(--surface-raised)] border border-[var(--border)]">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="font-mono text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 px-2 py-1 rounded-md">
                         {String(b.code)}
                       </span>
                     </td>
-                    <td className="td text-[var(--text-secondary)]">{String(b.address ?? '—')}</td>
-                    <td className="td text-right">
-                      <span className="rounded-md px-2 py-0.5 text-xs font-semibold bg-[var(--surface-raised)] border border-[var(--border)] text-[var(--text-secondary)]">
-                        {String(b.employee_count)}
-                      </span>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-[var(--text-secondary)]">
+                      {String(b.address ?? '—')}
                     </td>
-                    <td className="td">
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-700 dark:text-[var(--text-secondary)] tabular-nums">
+                      {String(b.employee_count ?? 0)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <StatusBadge status={String(b.status)} />
                     </td>
-                    <td className="td text-xs text-[var(--text-muted)]">{formatDate(String(b.created_at))}</td>
-                    <td className="td text-right">
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-[var(--text-muted)]">
+                      {formatDate(String(b.created_at))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
                       <BusinessActions id={Number(b.id)} status={String(b.status)} />
                     </td>
                   </tr>
