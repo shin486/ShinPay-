@@ -58,11 +58,21 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // Refresh auth session
-  try {
-    await supabase.auth.getUser();
-  } catch (err) {
-    // Session refresh errors should not crash middleware requests
+  // Skip blocking remote auth call on prefetch or if no auth cookie is present
+  const isPrefetch =
+    request.headers.get('purpose') === 'prefetch' ||
+    request.headers.get('sec-purpose') === 'prefetch' ||
+    request.headers.get('x-nextjs-data') !== null;
+
+  const hasAuthCookie = request.cookies.getAll().some((c) => c.name.startsWith('sb-'));
+
+  if (!isPrefetch && hasAuthCookie) {
+    // Refresh auth session only when session cookie exists and not prefetching
+    try {
+      await supabase.auth.getUser();
+    } catch (err) {
+      // Session refresh errors should not crash middleware requests
+    }
   }
 
   return response;

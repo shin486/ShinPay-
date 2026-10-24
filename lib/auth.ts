@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 import { randomBytes } from 'node:crypto';
 import { get, run, all, transaction } from './db';
 import { createClient, isSupabaseConfigured } from './supabase/server';
@@ -40,8 +41,8 @@ export function createSession(userId: number): void {
   });
 }
 
-/** Resolve the current session into the logged-in user, or null. Supports Supabase and SQLite. */
-export async function getCurrentUser(): Promise<SessionUser | null> {
+/** Resolve the current session into the logged-in user, or null. Supports Supabase and SQLite. Memoized per request lifecycle. */
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<SessionUser | null> {
   // 1. If Supabase is configured, use Supabase Auth
   if (isSupabaseConfigured()) {
     try {
@@ -162,7 +163,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   } catch {
     return null;
   }
-}
+});
 
 /** Ensure the caller is an authenticated user. */
 export async function requireUser(): Promise<SessionUser> {

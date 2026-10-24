@@ -63,17 +63,18 @@ export async function getBusinesses(orgId: number | null | undefined): Promise<B
   if (isSupabaseConfigured()) {
     try {
       const supabase = createClient();
-      const { data: bData } = await supabase
-        .from('businesses')
-        .select('id, name, code, address, contact_information, status, created_at')
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: false });
-
-      const { data: empCounts } = await supabase
-        .from('employees')
-        .select('business_id')
-        .eq('organization_id', orgId)
-        .eq('status', 'active');
+      const [{ data: bData }, { data: empCounts }] = await Promise.all([
+        supabase
+          .from('businesses')
+          .select('id, name, code, address, contact_information, status, created_at')
+          .eq('organization_id', orgId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('employees')
+          .select('business_id')
+          .eq('organization_id', orgId)
+          .eq('status', 'active'),
+      ]);
 
       const countMap = new Map<number, number>();
       for (const e of empCounts || []) {

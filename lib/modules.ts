@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { all, get, run } from './db';
 import { createClient, isSupabaseConfigured } from './supabase/server';
 
@@ -45,21 +46,22 @@ export function getOrganizationModules(orgId: number): ModuleDefinition[] {
 }
 
 /**
- * Async version of getOrganizationModules that connects directly to Supabase when active.
+ * Async version of getOrganizationModules that connects directly to Supabase when active (memoized per request).
  */
-export async function getOrganizationModulesAsync(orgId: number): Promise<ModuleDefinition[]> {
+export const getOrganizationModulesAsync = cache(async function getOrganizationModulesAsync(orgId: number): Promise<ModuleDefinition[]> {
   if (isSupabaseConfigured()) {
     try {
       const supabase = createClient();
-      const { data: modules } = await supabase
-        .from('modules')
-        .select('*')
-        .order('is_core', { ascending: false });
-
-      const { data: orgMods } = await supabase
-        .from('organization_modules')
-        .select('*')
-        .eq('organization_id', orgId);
+      const [{ data: modules }, { data: orgMods }] = await Promise.all([
+        supabase
+          .from('modules')
+          .select('*')
+          .order('is_core', { ascending: false }),
+        supabase
+          .from('organization_modules')
+          .select('*')
+          .eq('organization_id', orgId),
+      ]);
 
       const map = new Map((orgMods || []).map((m) => [m.module_id, m]));
 
@@ -84,7 +86,7 @@ export async function getOrganizationModulesAsync(orgId: number): Promise<Module
   }
 
   return getOrganizationModules(orgId);
-}
+});
 
 /**
  * Fast Boolean check to determine if an organization has access to a specific module.
@@ -151,12 +153,12 @@ export function getEnabledModuleIds(orgId: number): string[] {
 }
 
 /**
- * Async version of getEnabledModuleIds.
+ * Async version of getEnabledModuleIds (memoized per request).
  */
-export async function getEnabledModuleIdsAsync(orgId: number): Promise<string[]> {
+export const getEnabledModuleIdsAsync = cache(async function getEnabledModuleIdsAsync(orgId: number): Promise<string[]> {
   const mods = await getOrganizationModulesAsync(orgId);
   return mods.filter((m) => m.enabled).map((m) => m.id);
-}
+});
 
 /**
  * Server-side guard: throws an authorization error if the organization

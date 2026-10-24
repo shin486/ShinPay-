@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { all, get, run } from './db';
 import { createClient, isSupabaseConfigured } from './supabase/server';
 
@@ -24,8 +25,8 @@ export function getSettings(): SettingsMap {
   }
 }
 
-/** Async loader for settings supporting Supabase. */
-export async function getSettingsAsync(): Promise<SettingsMap> {
+/** Async loader for settings supporting Supabase (memoized per request). */
+export const getSettingsAsync = cache(async function getSettingsAsync(): Promise<SettingsMap> {
   if (isSupabaseConfigured()) {
     try {
       const supabase = createClient();
@@ -41,7 +42,7 @@ export async function getSettingsAsync(): Promise<SettingsMap> {
   }
 
   return getSettings();
-}
+});
 
 export function getSetting(key: string, fallback = ''): string {
   try {
